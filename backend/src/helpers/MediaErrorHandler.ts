@@ -581,6 +581,144 @@ export class MediaErrorHandler {
   }
 
   /**
+   * Handle download error with retry mechanism
+   */
+  static async handleDownloadError(error: Error, message: any): Promise<void> {
+    const mediaType = this.determineMediaType(message);
+    const errorInfo = this.analyzeMediaError(error, mediaType);
+    const messageId = message?.key?.id || 'unknown';
+
+    const context: LogContext = {
+      messageId,
+      operation: 'media_download_error',
+      metadata: {
+        mediaType,
+        errorCode: errorInfo.code,
+        severity: errorInfo.severity
+      }
+    };
+
+    this.logMediaError(error, errorInfo, context);
+    this.updateMediaProcessingState(messageId, mediaType, errorInfo.code, false);
+  }
+
+  /**
+   * Verify media integrity using hash comparison
+   */
+  static verifyMediaIntegrity(buffer: Buffer, expectedHash: Buffer): boolean {
+    if (!buffer || !expectedHash) {
+      return false;
+    }
+
+    const crypto = require('crypto');
+    const actualHash = crypto.createHash('sha256').update(buffer).digest();
+    
+    return actualHash.equals(expectedHash);
+  }
+
+  /**
+   * Circuit breaker implementation for media downloads
+   */
+  private static circuitBreakerState = {
+    isOpen: false,
+    failureCount: 0,
+    lastFailureTime: 0,
+    threshold: 5,
+    timeout: 60000 // 1 minute
+  };
+
+  /**
+   * Check if circuit breaker is open
+   */
+  static isCircuitBreakerOpen(): boolean {
+    const now = Date.now();
+    
+    // Reset circuit breaker after timeout
+    if (this.circuitBreakerState.isOpen && 
+        now - this.circuitBreakerState.lastFailureTime > this.circuitBreakerState.timeout) {
+      this.circuitBreakerState.isOpen = false;
+      this.circuitBreakerState.failureCount = 0;
+    }
+
+    return this.circuitBreakerState.isOpen;
+  }
+
+  /**
+   * Record failure for circuit breaker
+   */
+  static recordCircuitBreakerFailure(): void {
+    this.circuitBreakerState.failureCount++;
+    this.circuitBreakerState.lastFailureTime = Date.now();
+
+    if (this.circuitBreakerState.failureCount >= this.circuitBreakerState.threshold) {
+      this.circuitBreakerState.isOpen = true;
+    }
+  }
+
+  /**
+   * Record success for circuit breaker
+   */
+  static recordCircuitBreakerSuccess(): void {
+    this.circuitBreakerState.failureCount = 0;
+    this.circuitBreakerState.isOpen = false;
+  }
+
+  /**
+   * Download media with retry mechanism
+   */
+  static async downloadWithRetry(
+    message: any, 
+    options: { maxRetries?: number; retryDelay?: number; timeoutMs?: number } = {}
+  ): Promise<Buffer> {
+    const { maxRetries = 3, retryDelay = 1000, timeoutMs = 30000 } = options;
+    const mediaType = this.determineMediaType(message);
+    const messageId = message?.key?.id || 'unknown';
+
+    let lastError: Error;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Check circuit breaker
+        if (this.isCircuitBreakerOpen()) {
+          throw new Error('Circuit breaker is open');
+        }
+
+        // Simulate download (in real implementation, this would call the actual download method)
+        const buffer = await this.simulateDownload(message, timeoutMs);
+        
+        this.recordCircuitBreakerSuccess();
+        this.updateMediaProcessingState(messageId, mediaType, MediaErrorCode.DOWNLOAD_FAILED, true);
+        
+        return buffer;
+
+      } catch (error) {
+        lastError = error as Error;
+        this.recordCircuitBreakerFailure();
+
+        if (attempt < maxRetries) {
+          const delay = retryDelay * Math.pow(2, attempt - 1); // Exponential backoff
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw lastError!;
+  }
+
+  /**
+   * Simulate download for testing purposes
+   */
+  private static async simulateDownload(message: any, timeoutMs: number): Promise<Buffer> {
+    // This is a mock implementation for testing
+    // In real implementation, this would call the actual Baileys download method
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        reject(new Error('Download simulation - not implemented'));
+      }, 100);
+    });
+  }
+
+  /**
    * Create fallback placeholder for failed media
    */
   static createMediaFallback(mediaType: MediaType, errorInfo: MediaErrorInfo): any {

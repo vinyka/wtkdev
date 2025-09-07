@@ -33,6 +33,45 @@ export interface WhatsAppMetrics {
   cacheHitRate: number;
 }
 
+// Media processing metrics
+export interface MediaMetrics {
+  totalDownloads: number;
+  successfulDownloads: number;
+  failedDownloads: number;
+  retryAttempts: number;
+  corruptedDownloads: number;
+  downloadsByType: {
+    image: number;
+    video: number;
+    audio: number;
+    document: number;
+  };
+  averageDownloadSpeed: number; // bytes per second
+  averageDownloadTime: number; // milliseconds
+  cacheHitRate: number;
+  streamingDownloads: number;
+  averageChunkSize: number;
+  voiceMessageCount: number;
+  transcriptionCount: number;
+  averageTranscriptionTime: number;
+  documentTypeDistribution: Record<string, number>;
+  concurrentDownloads: number;
+  averageConcurrency: number;
+  circuitBreakerTrips: number;
+  peakMemoryUsage: number;
+}
+
+// Resource usage metrics
+export interface ResourceMetrics {
+  memoryUsage: MemoryMetrics;
+  cpuUsage: NodeJS.CpuUsage;
+  diskUsage?: {
+    used: number;
+    available: number;
+    total: number;
+  };
+}
+
 // Performance dashboard data
 export interface PerformanceDashboard {
   systemMetrics: SystemMetrics;
@@ -73,6 +112,50 @@ export class PerformanceMonitoringService extends EventEmitter {
     responseTime: 5000, // 5 seconds
     cpuUsage: 0.8 // 80% CPU usage
   };
+
+  // Media processing tracking
+  private mediaMetrics: MediaMetrics = {
+    totalDownloads: 0,
+    successfulDownloads: 0,
+    failedDownloads: 0,
+    retryAttempts: 0,
+    corruptedDownloads: 0,
+    downloadsByType: {
+      image: 0,
+      video: 0,
+      audio: 0,
+      document: 0
+    },
+    averageDownloadSpeed: 0,
+    averageDownloadTime: 0,
+    cacheHitRate: 0,
+    streamingDownloads: 0,
+    averageChunkSize: 0,
+    voiceMessageCount: 0,
+    transcriptionCount: 0,
+    averageTranscriptionTime: 0,
+    documentTypeDistribution: {},
+    concurrentDownloads: 0,
+    averageConcurrency: 0,
+    circuitBreakerTrips: 0,
+    peakMemoryUsage: 0
+  };
+
+  private activeDownloads: Map<string, {
+    startTime: number;
+    type: string;
+    size: number;
+    progress: number;
+  }> = new Map();
+
+  private activeTranscriptions: Map<string, {
+    startTime: number;
+  }> = new Map();
+
+  private downloadTimes: number[] = [];
+  private downloadSpeeds: number[] = [];
+  private transcriptionTimes: number[] = [];
+  private concurrencyHistory: number[] = [];
 
   private constructor() {
     super();
@@ -389,18 +472,182 @@ export class PerformanceMonitoringService extends EventEmitter {
     });
   }
 
+  // Media processing methods
+  public startMediaDownload(mediaId: string, type: string, size: number): void {
+    this.activeDownloads.set(mediaId, {
+      startTime: Date.now(),
+      type,
+      size,
+      progress: 0
+    });
+
+    this.mediaMetrics.totalDownloads++;
+    this.mediaMetrics.downloadsByType[type as keyof typeof this.mediaMetrics.downloadsByType]++;
+    this.mediaMetrics.concurrentDownloads = this.activeDownloads.size;
+    
+    // Update average concurrency
+    this.concurrencyHistory.push(this.activeDownloads.size);
+    if (this.concurrencyHistory.length > 100) {
+      this.concurrencyHistory = this.concurrencyHistory.slice(-100);
+    }
+    this.mediaMetrics.averageConcurrency = this.concurrencyHistory.reduce((a, b) => a + b, 0) / this.concurrencyHistory.length;
+  }
+
+  public endMediaDownload(mediaId: string, success: boolean): number {
+    const download = this.activeDownloads.get(mediaId);
+    if (!download) return 0;
+
+    const duration = Date.now() - download.startTime;
+    this.activeDownloads.delete(mediaId);
+
+    if (success) {
+      this.mediaMetrics.successfulDownloads++;
+      
+      // Calculate download speed
+      const speed = download.size / (duration / 1000); // bytes per second
+      this.downloadSpeeds.push(speed);
+      this.downloadTimes.push(duration);
+
+      // Keep only recent measurements
+      if (this.downloadSpeeds.length > 100) {
+        this.downloadSpeeds = this.downloadSpeeds.slice(-100);
+      }
+      if (this.downloadTimes.length > 100) {
+        this.downloadTimes = this.downloadTimes.slice(-100);
+      }
+
+      // Update averages
+      this.mediaMetrics.averageDownloadSpeed = this.downloadSpeeds.reduce((a, b) => a + b, 0) / this.downloadSpeeds.length;
+      this.mediaMetrics.averageDownloadTime = this.downloadTimes.reduce((a, b) => a + b, 0) / this.downloadTimes.length;
+    } else {
+      this.mediaMetrics.failedDownloads++;
+    }
+
+    return duration;
+  }
+
+  public recordMediaProgress(mediaId: string, progress: number): void {
+    const download = this.activeDownloads.get(mediaId);
+    if (download) {
+      download.progress = progress;
+    }
+  }
+
+  public startTranscription(mediaId: string): void {
+    this.activeTranscriptions.set(mediaId, {
+      startTime: Date.now()
+    });
+  }
+
+  public endTranscription(mediaId: string, success: boolean): number {
+    const transcription = this.activeTranscriptions.get(mediaId);
+    if (!transcription) return 0;
+
+    const duration = Date.now() - transcription.startTime;
+    this.activeTranscriptions.delete(mediaId);
+
+    if (success) {
+      this.mediaMetrics.transcriptionCount++;
+      this.transcriptionTimes.push(duration);
+
+      if (this.transcriptionTimes.length > 100) {
+        this.transcriptionTimes = this.transcriptionTimes.slice(-100);
+      }
+
+      this.mediaMetrics.averageTranscriptionTime = this.transcriptionTimes.reduce((a, b) => a + b, 0) / this.transcriptionTimes.length;
+    }
+
+    return duration;
+  }
+
+  public recordMemoryUsage(): void {
+    const memoryUsage = process.memoryUsage();
+    if (memoryUsage.heapUsed > this.mediaMetrics.peakMemoryUsage) {
+      this.mediaMetrics.peakMemoryUsage = memoryUsage.heapUsed;
+    }
+  }
+
+  public getMediaMetrics(): MediaMetrics {
+    return { ...this.mediaMetrics };
+  }
+
+  public getResourceMetrics(): ResourceMetrics {
+    return {
+      memoryUsage: {
+        ...process.memoryUsage(),
+        timestamp: new Date()
+      },
+      cpuUsage: process.cpuUsage()
+    };
+  }
+
+  // Additional helper methods for the test
+  public incrementRetryAttempts(): void {
+    this.mediaMetrics.retryAttempts++;
+  }
+
+  public incrementCorruptedDownloads(): void {
+    this.mediaMetrics.corruptedDownloads++;
+  }
+
+  public incrementStreamingDownloads(): void {
+    this.mediaMetrics.streamingDownloads++;
+  }
+
+  public recordChunkSize(size: number): void {
+    // Simple running average for chunk size
+    const currentAvg = this.mediaMetrics.averageChunkSize;
+    const count = this.mediaMetrics.streamingDownloads || 1;
+    this.mediaMetrics.averageChunkSize = (currentAvg * (count - 1) + size) / count;
+  }
+
+  public incrementVoiceMessages(): void {
+    this.mediaMetrics.voiceMessageCount++;
+  }
+
+  public recordDocumentType(mimetype: string): void {
+    const extension = this.getExtensionFromMimetype(mimetype);
+    this.mediaMetrics.documentTypeDistribution[extension] = (this.mediaMetrics.documentTypeDistribution[extension] || 0) + 1;
+  }
+
+  public incrementCircuitBreakerTrips(): void {
+    this.mediaMetrics.circuitBreakerTrips++;
+  }
+
+  public updateCacheHitRate(hits: number, total: number): void {
+    this.mediaMetrics.cacheHitRate = total > 0 ? hits / total : 0;
+  }
+
+  private getExtensionFromMimetype(mimetype: string): string {
+    const mimetypeMap: Record<string, string> = {
+      'application/pdf': 'pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+      'application/vnd.ms-excel': 'xls',
+      'text/plain': 'txt',
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'video/mp4': 'mp4',
+      'audio/mpeg': 'mp3',
+      'audio/ogg': 'ogg'
+    };
+
+    return mimetypeMap[mimetype] || 'unknown';
+  }
+
   // Export metrics for external monitoring
   public exportMetrics(): {
     system: SystemMetrics[];
     performance: PerformanceMetrics[];
     whatsapp: WhatsAppMetrics[];
     alerts: PerformanceAlert[];
+    media: MediaMetrics;
   } {
     return {
       system: [...this.systemMetricsHistory],
       performance: [...this.performanceMetricsHistory],
       whatsapp: Array.from(this.whatsappMetrics.values()),
-      alerts: [...this.alerts]
+      alerts: [...this.alerts],
+      media: { ...this.mediaMetrics }
     };
   }
 }
