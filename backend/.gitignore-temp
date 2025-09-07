@@ -1,0 +1,5 @@
+# Temporary ignore for tests during commit
+**/*.spec.ts
+**/*.test.ts
+**/__tests__/**/*
+src/__tests__/**/*

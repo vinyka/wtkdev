@@ -1,5 +1,5 @@
 import { WASocket, GroupMetadata, jidNormalizedUser, proto } from "@whiskeysockets/baileys";
-import { logger } from "../../utils/logger";
+import logger from "../../utils/logger";
 import { normalizeJid } from "../../helpers/JidLidMapper";
 import GroupHandlerService from "./GroupHandlerService";
 import AppError from "../../errors/AppError";
@@ -87,7 +87,7 @@ class GroupAdminService {
       };
 
     } catch (error) {
-      logger.error(`Error creating group "${subject}":`, error);
+      logger.error(`Error creating group "${subject}":`, error as any);
       throw new AppError(`Failed to create group: ${error.message}`, 500);
     }
   }
@@ -169,7 +169,7 @@ class GroupAdminService {
           }
 
         } catch (error) {
-          logger.error(`Error processing ${actionType} actions:`, error);
+          logger.error(`Error processing ${actionType} actions:`, error as any);
           jids.forEach(jid => results.failed.push(jid));
         }
       }
@@ -181,7 +181,7 @@ class GroupAdminService {
       return results;
 
     } catch (error) {
-      logger.error(`Error managing participants for group ${groupJid}:`, error);
+      logger.error(`Error managing participants for group ${groupJid}:`, error as any);
       throw new AppError(`Failed to manage participants: ${error.message}`, 500);
     }
   }
@@ -242,7 +242,7 @@ class GroupAdminService {
       return updated;
 
     } catch (error) {
-      logger.error(`Error updating group settings for ${groupJid}:`, error);
+      logger.error(`Error updating group settings for ${groupJid}:`, error as any);
       throw new AppError(`Failed to update group settings: ${error.message}`, 500);
     }
   }
@@ -288,7 +288,7 @@ class GroupAdminService {
       return result;
 
     } catch (error) {
-      logger.error(`Error managing group invite for ${groupJid}:`, error);
+      logger.error(`Error managing group invite for ${groupJid}:`, error as any);
       throw new AppError(`Failed to manage group invite: ${error.message}`, 500);
     }
   }
@@ -310,7 +310,7 @@ class GroupAdminService {
       return true;
 
     } catch (error) {
-      logger.error(`Error leaving group ${groupJid}:`, error);
+      logger.error(`Error leaving group ${groupJid}:`, error as any);
       throw new AppError(`Failed to leave group: ${error.message}`, 500);
     }
   }
@@ -333,7 +333,7 @@ class GroupAdminService {
       );
 
     } catch (error) {
-      logger.error(`Error getting group info for ${groupJid}:`, error);
+      logger.error(`Error getting group info for ${groupJid}:`, error as any);
       return null;
     }
   }
@@ -350,7 +350,7 @@ class GroupAdminService {
       await wbot.groupUpdateDescription(groupJid, description);
       logger.debug(`Updated group description for ${groupJid}`);
     } catch (error) {
-      logger.error(`Error updating group description for ${groupJid}:`, error);
+      logger.error(`Error updating group description for ${groupJid}:`, error as any);
       throw error;
     }
   }
@@ -367,7 +367,7 @@ class GroupAdminService {
       await wbot.updateProfilePicture(groupJid, imageBuffer);
       logger.debug(`Updated group profile picture for ${groupJid}`);
     } catch (error) {
-      logger.error(`Error updating group profile picture for ${groupJid}:`, error);
+      logger.error(`Error updating group profile picture for ${groupJid}:`, error as any);
       throw error;
     }
   }
@@ -396,7 +396,7 @@ class GroupAdminService {
       ) || false;
 
     } catch (error) {
-      logger.error(`Error validating group admin for ${groupJid}:`, error);
+      logger.error(`Error validating group admin for ${groupJid}:`, error as any);
       return false;
     }
   }

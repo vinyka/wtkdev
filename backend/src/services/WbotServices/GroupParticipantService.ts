@@ -1,7 +1,7 @@
 import { WASocket, GroupMetadata, proto, jidNormalizedUser } from "@whiskeysockets/baileys";
-import { logger } from "../../utils/logger";
+import logger from "../../utils/logger";
 import { normalizeJid } from "../../helpers/JidLidMapper";
-import { cacheLayer } from "../../libs/cache";
+import cache from "../../libs/cache";
 import GroupHandlerService from "./GroupHandlerService";
 
 interface ParticipantInfo {
@@ -60,7 +60,7 @@ class GroupParticipantService {
 
       // Check cache first unless force refresh is requested
       if (!forceRefresh) {
-        const cached = await cacheLayer.get(cacheKey);
+        const cached = await cache.get(cacheKey);
         if (cached) {
           const parsedCache = JSON.parse(cached);
           const cacheAge = Date.now() - new Date(parsedCache.timestamp).getTime();
@@ -100,13 +100,13 @@ class GroupParticipantService {
         groupJid: normalizedGroupJid
       };
 
-      await cacheLayer.set(cacheKey, JSON.stringify(cacheData), this.CACHE_TTL);
+      await cache.set(cacheKey, JSON.stringify(cacheData), this.CACHE_TTL.toString());
 
       logger.debug(`Cached ${participants.length} participants for ${normalizedGroupJid}`);
       return participants;
 
     } catch (error) {
-      logger.error(`Error getting group participants for ${groupJid}:`, error);
+      logger.error(`Error getting group participants for ${groupJid}:`, error as any);
       return [];
     }
   }
@@ -151,7 +151,7 @@ class GroupParticipantService {
       logger.debug(`Completed processing ${events.length} participant events for ${normalizedGroupJid}`);
 
     } catch (error) {
-      logger.error(`Error handling group participants update:`, error);
+      logger.error(`Error handling group participants update:`, error as any);
     }
   }
 
@@ -164,7 +164,7 @@ class GroupParticipantService {
       const cacheKey = `${this.CACHE_PREFIX}stats:${normalizedGroupJid}`;
 
       // Check cache first
-      const cached = await cacheLayer.get(cacheKey);
+      const cached = await cache.get(cacheKey);
       if (cached) {
         const parsedCache = JSON.parse(cached);
         const cacheAge = Date.now() - new Date(parsedCache.lastUpdated).getTime();
@@ -184,12 +184,12 @@ class GroupParticipantService {
       };
 
       // Cache the stats
-      await cacheLayer.set(cacheKey, JSON.stringify(stats), this.STATS_CACHE_TTL);
+      await cache.set(cacheKey, JSON.stringify(stats), this.STATS_CACHE_TTL.toString());
 
       return stats;
 
     } catch (error) {
-      logger.error(`Error getting participant stats for ${groupJid}:`, error);
+      logger.error(`Error getting participant stats for ${groupJid}:`, error as any);
       return null;
     }
   }
@@ -213,7 +213,7 @@ class GroupParticipantService {
       return participant?.isAdmin || false;
 
     } catch (error) {
-      logger.error(`Error checking if participant is admin:`, error);
+      logger.error(`Error checking if participant is admin:`, error as any);
       return false;
     }
   }
@@ -230,7 +230,7 @@ class GroupParticipantService {
       const normalizedParticipantJid = jidNormalizedUser(participantJid);
       const cacheKey = `${this.CACHE_PREFIX}activity:${normalizedGroupJid}:${normalizedParticipantJid}`;
 
-      const cached = await cacheLayer.get(cacheKey);
+      const cached = await cache.get(cacheKey);
       if (cached) {
         return JSON.parse(cached);
       }
@@ -243,12 +243,12 @@ class GroupParticipantService {
       };
 
       // Cache for 1 hour
-      await cacheLayer.set(cacheKey, JSON.stringify(activity), 3600);
+      await cache.set(cacheKey, JSON.stringify(activity), "3600");
 
       return activity;
 
     } catch (error) {
-      logger.error(`Error getting participant activity:`, error);
+      logger.error(`Error getting participant activity:`, error as any);
       return { isActive: false };
     }
   }
@@ -291,7 +291,7 @@ class GroupParticipantService {
           // Process results
           if (result) {
             Object.entries(result).forEach(([jid, status]) => {
-              if (status === "200") {
+              if (typeof status === 'object' && status && 'status' in status && status.status === "200") {
                 results.success.push(jid);
               } else {
                 results.failed.push(jid);
@@ -300,7 +300,7 @@ class GroupParticipantService {
           }
 
         } catch (error) {
-          logger.error(`Error processing ${action} batch:`, error);
+          logger.error(`Error processing ${action} batch:`, error as any);
           actionGroups[action].forEach(jid => results.failed.push(jid));
         }
       }
@@ -312,7 +312,7 @@ class GroupParticipantService {
       return results;
 
     } catch (error) {
-      logger.error(`Error in batch participant update:`, error);
+      logger.error(`Error in batch participant update:`, error as any);
       throw error;
     }
   }
@@ -337,14 +337,14 @@ class GroupParticipantService {
               await this.handleSpecificParticipantEvent(event);
               
             } catch (error) {
-              logger.error(`Error processing participant event:`, error);
+              logger.error(`Error processing participant event:`, error as any);
             }
           })
         );
       }
 
     } catch (error) {
-      logger.error(`Error processing participant events:`, error);
+      logger.error(`Error processing participant events:`, error as any);
     }
   }
 
@@ -391,10 +391,10 @@ class GroupParticipantService {
       stats.lastUpdated = new Date();
 
       // Cache updated stats
-      await cacheLayer.set(cacheKey, JSON.stringify(stats), this.STATS_CACHE_TTL);
+      await cache.set(cacheKey, JSON.stringify(stats), this.STATS_CACHE_TTL.toString());
 
     } catch (error) {
-      logger.error(`Error updating participant stats:`, error);
+      logger.error(`Error updating participant stats:`, error as any);
     }
   }
 
@@ -412,10 +412,10 @@ class GroupParticipantService {
         updatedAt: new Date()
       };
 
-      await cacheLayer.set(cacheKey, JSON.stringify(activity), 3600);
+      await cache.set(cacheKey, JSON.stringify(activity), "3600");
 
     } catch (error) {
-      logger.error(`Error updating participant activity:`, error);
+      logger.error(`Error updating participant activity:`, error as any);
     }
   }
 
@@ -443,7 +443,7 @@ class GroupParticipantService {
       }
 
     } catch (error) {
-      logger.error(`Error handling specific participant event:`, error);
+      logger.error(`Error handling specific participant event:`, error as any);
     }
   }
 
@@ -464,10 +464,10 @@ class GroupParticipantService {
       };
 
       // For now, just log to console (in production, this would go to proper logging/analytics)
-      logger.info(`Participant events logged:`, JSON.stringify(logData, null, 2));
+      logger.info(`Participant events logged:`, JSON.stringify(logData, null, 2) as any);
 
     } catch (error) {
-      logger.error(`Error logging participant events:`, error);
+      logger.error(`Error logging participant events:`, error as any);
     }
   }
 
@@ -481,12 +481,12 @@ class GroupParticipantService {
         `${this.CACHE_PREFIX}stats:${groupJid}`
       ];
 
-      await Promise.all(keys.map(key => cacheLayer.del(key)));
+      await Promise.all(keys.map(key => cache.del(key)));
       
       logger.debug(`Cleared participant cache for group ${groupJid}`);
 
     } catch (error) {
-      logger.error(`Error clearing participant cache:`, error);
+      logger.error(`Error clearing participant cache:`, error as any);
     }
   }
 
@@ -503,7 +503,7 @@ class GroupParticipantService {
       return [];
 
     } catch (error) {
-      logger.error(`Error getting participant history:`, error);
+      logger.error(`Error getting participant history:`, error as any);
       return [];
     }
   }

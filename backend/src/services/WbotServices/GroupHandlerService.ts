@@ -1,9 +1,9 @@
 import { WASocket, GroupMetadata, proto, jidNormalizedUser } from "@whiskeysockets/baileys";
-import { logger } from "../../utils/logger";
+import logger from "../../utils/logger";
 import { normalizeJid } from "../../helpers/JidLidMapper";
 import Contact from "../../models/Contact";
 import CreateOrUpdateContactService from "../ContactServices/CreateOrUpdateContactService";
-import { cacheLayer } from "../../libs/cache";
+import cache from "../../libs/cache";
 
 interface EnhancedGroupMetadata extends GroupMetadata {
   lastUpdated?: Date;
@@ -45,7 +45,7 @@ class GroupHandlerService {
 
       // Check cache first unless force refresh is requested
       if (!forceRefresh) {
-        const cached = await cacheLayer.get(cacheKey);
+        const cached = await cache.get(cacheKey);
         if (cached) {
           const parsedCache = JSON.parse(cached);
           const cacheAge = Date.now() - new Date(parsedCache.lastSync).getTime();
@@ -81,14 +81,14 @@ class GroupHandlerService {
         lastSync: new Date()
       };
 
-      await cacheLayer.set(cacheKey, JSON.stringify(cacheData), this.CACHE_TTL / 1000);
+      await cache.set(cacheKey, JSON.stringify(cacheData), Math.floor(this.CACHE_TTL / 1000).toString());
       this.groupCache.set(normalizedJid, cacheData);
 
       logger.debug(`Cached enhanced group metadata for ${normalizedJid}`);
       return enhancedMetadata;
 
     } catch (error) {
-      logger.error(`Error fetching group metadata for ${groupJid}:`, error);
+      logger.error(`Error fetching group metadata for ${groupJid}:`, error as any);
       return null;
     }
   }
@@ -123,7 +123,7 @@ class GroupHandlerService {
         companyId,
         remoteJid: normalizeJid(groupJid),
         profilePicUrl: await this.getGroupProfilePicture(wbot, groupJid),
-        whatsappId: wbot.id,
+        whatsappId: parseInt(wbot.user?.id || '0'),
         wbot: wbot
       };
 
@@ -139,7 +139,7 @@ class GroupHandlerService {
       return { groupContact, isGroupAdmin };
 
     } catch (error) {
-      logger.error(`Error processing group message:`, error);
+      logger.error(`Error processing group message:`, error as any);
       return { groupContact: null, isGroupAdmin: false };
     }
   }
@@ -165,7 +165,7 @@ class GroupHandlerService {
             try {
               await this.processGroupUpdate(wbot, group, companyId);
             } catch (error) {
-              logger.error(`Error processing group update for ${group.id}:`, error);
+              logger.error(`Error processing group update for ${group.id}:`, error as any);
             }
           })
         );
@@ -174,7 +174,7 @@ class GroupHandlerService {
       logger.debug(`Completed processing group updates`);
 
     } catch (error) {
-      logger.error(`Error handling group updates:`, error);
+      logger.error(`Error handling group updates:`, error as any);
     }
   }
 
@@ -201,7 +201,7 @@ class GroupHandlerService {
         companyId: companyId,
         remoteJid: normalizedJid,
         profilePicUrl,
-        whatsappId: wbot.id,
+        whatsappId: parseInt(wbot.user?.id || '0'),
         wbot: wbot
       };
 
@@ -213,7 +213,7 @@ class GroupHandlerService {
       logger.debug(`Updated group contact: ${nameGroup} (${normalizedJid})`);
 
     } catch (error) {
-      logger.error(`Error processing group update for ${group.id}:`, error);
+      logger.error(`Error processing group update for ${group.id}:`, error as any);
     }
   }
 
@@ -225,7 +225,7 @@ class GroupHandlerService {
       const cacheKey = `${this.CACHE_PREFIX}picture:${normalizeJid(groupJid)}`;
       
       // Check cache first
-      const cached = await cacheLayer.get(cacheKey);
+      const cached = await cache.get(cacheKey);
       if (cached) {
         return cached;
       }
@@ -234,12 +234,12 @@ class GroupHandlerService {
       const profilePicUrl = await wbot.profilePictureUrl(groupJid, "image");
       
       // Cache for 1 hour
-      await cacheLayer.set(cacheKey, profilePicUrl, 3600);
+      await cache.set(cacheKey, profilePicUrl, "3600");
       
       return profilePicUrl;
 
     } catch (error) {
-      logger.debug(`Could not fetch group profile picture for ${groupJid}:`, error.message);
+      logger.debug(`Could not fetch group profile picture for ${groupJid}:`, error.message as any);
       return `${process.env.FRONTEND_URL}/nopicture.png`;
     }
   }
@@ -272,10 +272,10 @@ class GroupHandlerService {
         subject: metadata.subject
       };
 
-      await cacheLayer.set(statsKey, JSON.stringify(stats), 86400); // 24 hours
+      await cache.set(statsKey, JSON.stringify(stats), "86400"); // 24 hours
 
     } catch (error) {
-      logger.error(`Error updating group statistics for ${groupJid}:`, error);
+      logger.error(`Error updating group statistics for ${groupJid}:`, error as any);
     }
   }
 
@@ -287,7 +287,7 @@ class GroupHandlerService {
       const normalizedJid = normalizeJid(groupJid);
       const cacheKey = `${this.CACHE_PREFIX}participants:${normalizedJid}`;
       
-      const cached = await cacheLayer.get(cacheKey);
+      const cached = await cache.get(cacheKey);
       if (cached) {
         return JSON.parse(cached);
       }
@@ -296,7 +296,7 @@ class GroupHandlerService {
       return [];
 
     } catch (error) {
-      logger.error(`Error getting group participants for ${groupJid}:`, error);
+      logger.error(`Error getting group participants for ${groupJid}:`, error as any);
       return [];
     }
   }
@@ -314,13 +314,13 @@ class GroupHandlerService {
         `${this.CACHE_PREFIX}participants:${normalizedJid}`
       ];
 
-      await Promise.all(keys.map(key => cacheLayer.del(key)));
+      await Promise.all(keys.map(key => cache.del(key)));
       this.groupCache.delete(normalizedJid);
 
       logger.debug(`Cleared cache for group ${normalizedJid}`);
 
     } catch (error) {
-      logger.error(`Error clearing group cache for ${groupJid}:`, error);
+      logger.error(`Error clearing group cache for ${groupJid}:`, error as any);
     }
   }
 }

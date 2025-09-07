@@ -4038,7 +4038,7 @@ const wbotMessageListener = (wbot: Session, companyId: number): void => {
       
       logger.debug(`Processed ${groupUpdate.length} group updates using enhanced handler`);
     } catch (error) {
-      logger.error("Error processing group updates:", error);
+      logger.error("Error processing group updates:", error as any);
       Sentry.captureException(error);
     }
   });
@@ -4053,7 +4053,7 @@ const wbotMessageListener = (wbot: Session, companyId: number): void => {
       
       logger.debug(`Processed participant update for group ${participantUpdate.id}: ${participantUpdate.action}`);
     } catch (error) {
-      logger.error("Error processing group participant update:", error);
+      logger.error("Error processing group participant update:", error as any);
       Sentry.captureException(error);
     }
   })

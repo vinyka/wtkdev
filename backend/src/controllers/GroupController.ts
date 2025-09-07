@@ -4,7 +4,7 @@ import GroupHandlerService from "../services/WbotServices/GroupHandlerService";
 import GroupAdminService from "../services/WbotServices/GroupAdminService";
 import GroupParticipantService from "../services/WbotServices/GroupParticipantService";
 import AppError from "../errors/AppError";
-import { logger } from "../utils/logger";
+import logger from "../utils/logger";
 
 interface GroupRequest extends Request {
   user: {
